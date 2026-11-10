@@ -144,3 +144,67 @@ func TestNoteOnlyOtherSlotsNameTheSlot(t *testing.T) {
 		t.Errorf("named slot: %q", got)
 	}
 }
+
+// ---- "in sync" must have been checked
+
+func TestInSyncIsNotSaidWhenRomMSentNoHashToCheck(t *testing.T) {
+	local, _ := hashOf(t, "progress")
+
+	got := DescribeSync(SyncFacts{
+		Local: []LocalSave{local},
+		Ops:   []romm.SyncOperationSchema{{Action: "no_op", ServerUpdatedAt: &romMTime}},
+	})
+
+	mustSay(t, got, OutcomeUnverified, "could not check")
+	if strings.Contains(got.Text(), "in sync") {
+		t.Errorf("said in sync without a hash to compare:\n%s", got.Text())
+	}
+}
+
+func TestInSyncIsNotSaidWhenTheDevicesSaveCannotBeRead(t *testing.T) {
+	hash := "abc"
+
+	missing := DescribeSync(SyncFacts{
+		Local: []LocalSave{{FilePath: filepath.Join(t.TempDir(), "gone.srm")}},
+		Ops:   []romm.SyncOperationSchema{{Action: "no_op", ServerContentHash: &hash}},
+	})
+	mustSay(t, missing, OutcomeUnverified, "could not check")
+
+	none := DescribeSync(SyncFacts{
+		Ops: []romm.SyncOperationSchema{{Action: "no_op", ServerContentHash: &hash}},
+	})
+	mustSay(t, none, OutcomeUnverified, "could not check")
+}
+
+func TestOnlyASyncThatLeftTheSidesInAgreementIsRecordedAsRecent(t *testing.T) {
+	cases := map[OutcomeKind]bool{
+		OutcomeInSync:     true,
+		OutcomeNothingYet: true,
+		OutcomeDownloaded: true,
+		OutcomeUploaded:   true,
+
+		OutcomeUnverified: false,
+		OutcomeNoAnswer:   false,
+		OutcomeOtherSlot:  false,
+		OutcomeLeftAlone:  false,
+		OutcomeNeedsYou:   false,
+		OutcomeFailed:     false,
+	}
+	for kind, want := range cases {
+		if got := (Outcome{Kind: kind}).Settled(); got != want {
+			t.Errorf("kind %v: Settled() = %v, want %v", kind, got, want)
+		}
+	}
+}
+
+// An upload-only run does not take RomM's newer save. It must not look finished,
+// or the next launch would skip the sync that does take it.
+func TestAnUploadOnlyRunThatLeftRomMsNewerSaveIsNotSettled(t *testing.T) {
+	got := DescribeSync(SyncFacts{
+		Ops: []romm.SyncOperationSchema{{Action: "download", ServerUpdatedAt: &romMTime}},
+	})
+
+	if got.Settled() {
+		t.Errorf("treated as settled although RomM's newer save was not taken:\n%s", got.Text())
+	}
+}

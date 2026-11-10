@@ -137,6 +137,7 @@ func UploadsOnly(items []SyncItem) []SyncItem {
 	var kept []SyncItem
 	for _, item := range items {
 		if item.Action == ActionUpload {
+			item.UploadOnly = true
 			kept = append(kept, item)
 		}
 	}

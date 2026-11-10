@@ -1219,15 +1219,7 @@ func ExecuteActions(client *romm.Client, config *settings.Config, deviceID strin
 				item.Success = true
 				report.Uploaded++
 			case uploadSupersededByDownload:
-				// 409: server slot is ahead and local is unmodified, so reconcile by
-				// downloading the server save (download() backs up the local first).
-				item.Action = ActionDownload
-				if download(client, config, deviceID, item) {
-					item.Success = true
-					report.Downloaded++
-				} else {
-					report.Errors++
-				}
+				settleSuperseded(client, config, deviceID, item, &report)
 			case uploadConflict:
 				item.Action = ActionConflict
 				report.Conflicts++
@@ -1264,6 +1256,28 @@ func ExecuteActions(client *romm.Client, config *settings.Config, deviceID strin
 	report.Items = items
 	logger.Debug("Sync execution complete", "uploaded", report.Uploaded, "downloaded", report.Downloaded, "skipped", report.Skipped, "errors", report.Errors)
 	return report
+}
+
+// settleSuperseded handles an upload the server turned down because its own save
+// is ahead of an unmodified one on the device. The usual answer is to take the
+// server's save (download() backs up the local one first); a run that may only
+// send leaves it for a sync that may download.
+func settleSuperseded(client *romm.Client, config *settings.Config, deviceID string, item *SyncItem, report *SyncReport) {
+	if item.UploadOnly {
+		item.Action = ActionConflict
+		report.Conflicts++
+		return
+	}
+	item.Action = ActionDownload
+	if download(client, config, deviceID, item) {
+		item.Success = true
+		report.Downloaded++
+		return
+	}
+	report.Errors++
+	if item.TimedOut {
+		report.TimedOut++
+	}
 }
 
 type uploadOutcome int
@@ -1573,6 +1587,10 @@ func download(client *romm.Client, config *settings.Config, deviceID string, ite
 			logger.Error("Failed to write save file", "path", savePath, "error", err)
 			return false
 		}
+	}
+
+	if item.AfterWrite != nil {
+		item.AfterWrite()
 	}
 
 	t := item.RemoteSave.UpdatedAt.Truncate(time.Second)

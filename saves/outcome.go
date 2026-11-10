@@ -30,6 +30,9 @@ const (
 	OutcomeLeftAlone
 	// OutcomeNeedsYou: a conflict or a choice only the player can settle.
 	OutcomeNeedsYou
+	// OutcomeUnverified: RomM said there was nothing to do, but the two saves could
+	// not be compared, so nothing can be said about whether they match.
+	OutcomeUnverified
 	// OutcomeFailed: something went wrong.
 	OutcomeFailed
 )
@@ -138,17 +141,31 @@ func DescribeSync(f SyncFacts) Outcome {
 			return Outcome{OutcomeLeftAlone, []string{"Nothing was done.", "RomM said: " + op.Action + ".", "See the Grout logs."}}
 		}
 	}
+	verified := false
 	for _, op := range f.Ops {
 		if op.ServerContentHash == nil || len(f.Local) == 0 {
 			continue
 		}
-		if hash, err := saveContentHash(f.Local[0]); err == nil && hash != *op.ServerContentHash {
+		hash, err := saveContentHash(f.Local[0])
+		if err != nil {
+			continue
+		}
+		if hash != *op.ServerContentHash {
 			return Outcome{OutcomeLeftAlone, []string{
 				"RomM says nothing to do,",
 				"but the saves differ.",
 				"See the Grout logs.",
 			}}
 		}
+		verified = true
+	}
+	if !verified {
+		return Outcome{OutcomeUnverified, []string{
+			"RomM says there is nothing",
+			"to do.",
+			"Grout could not check that",
+			"the saves match.",
+		}}
 	}
 	lines := []string{"Already in sync.", "RomM and this device hold", "the same save."}
 	for _, op := range f.Ops {
@@ -217,4 +234,14 @@ func NewestWrite(local []LocalSave) time.Time {
 		}
 	}
 	return newest
+}
+
+// Settled reports whether the sync left the two sides in agreement, so that
+// syncing the game again straight away would find nothing new to do.
+func (o Outcome) Settled() bool {
+	switch o.Kind {
+	case OutcomeInSync, OutcomeNothingYet, OutcomeDownloaded, OutcomeUploaded:
+		return true
+	}
+	return false
 }

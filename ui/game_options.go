@@ -9,7 +9,6 @@ import (
 	"grout/settings"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	gaba "github.com/BrandonKowalski/gabagool/v2/pkg/gabagool"
@@ -414,19 +413,15 @@ func (s *GameOptionsScreen) resolveSaves(config *settings.Config, host settings.
 	}
 	choice := result.Items[0].SelectedOption
 
-	// It goes where the game's core reads it, or stays in its own folder when
-	// that cannot be told.
-	folder := cfw.ActiveFirmware().SaveFolderForRom(romPath)
+	// It goes where the game's core reads it, even if no copy is there yet (a game
+	// can have copies under two old cores and none under the one it runs on), or
+	// stays in its own folder when that cannot be told.
 	destDir := filepath.Dir(duplicates.Copies[0].FilePath)
 	if choice < len(duplicates.Copies) {
 		destDir = filepath.Dir(duplicates.Copies[choice].FilePath)
 	}
-	if folder != "" {
-		for _, copy := range duplicates.Copies {
-			if strings.EqualFold(saves.FolderName(copy), folder) {
-				destDir = filepath.Dir(copy.FilePath)
-			}
-		}
+	if dir := saves.SaveDirectoryForGame(duplicates.Copies[0].FSSlug, romPath, config); dir != "" {
+		destDir = dir
 	}
 
 	var message string
@@ -475,10 +470,23 @@ func (s *GameOptionsScreen) resolveSaves(config *settings.Config, host settings.
 	}
 	logger.Info("Resolved the game's saves", "rom", duplicates.RomName, "choice", choice, "in", destDir)
 
+	// The save the game reads has changed if it came from RomM or from another
+	// folder, and the resume state still holds the progress of the one it replaced.
+	// A copy that was already the one in use leaves the state consistent.
+	chosenFromRomM := choice == len(duplicates.Copies)
+	var chosenCopy *saves.LocalSave
+	if !chosenFromRomM {
+		chosenCopy = &duplicates.Copies[choice]
+	}
+	replacedTheSaveInUse := saves.ChangesSaveInUse(chosenCopy, destDir)
+	if chosenFromRomM && remote != nil && saves.FollowSlot(config, duplicates.RomID, remote) {
+		if err := settings.SaveSlotPreferences(config); err != nil {
+			logger.Error("Error saving slot preferences", "error", err)
+		}
+	}
+
 	done := localize("resolve_saves_done", "Done.")
-	if choice == len(duplicates.Copies) && romPath != "" {
-		// A save that came from RomM replaces the progress a resume state holds,
-		// the same as when a sync downloads one.
+	if replacedTheSaveInUse && romPath != "" {
 		if moved, err := cfw.ActiveFirmware().SetAsideResumeState(romPath); err != nil {
 			logger.Error("Could not set the resume state aside", "rom", romPath, "error", err)
 		} else if moved > 0 {
@@ -572,10 +580,7 @@ func (s *GameOptionsScreen) useRommsSave(config *settings.Config, host settings.
 
 	// It goes where the game's core reads it; a game with a save already keeps
 	// using the folder that save is in.
-	destDir := ""
-	if folder := cfw.ActiveFirmware().SaveFolderForRom(romPath); folder != "" {
-		destDir = filepath.Join(cfw.BaseSavePath(), folder)
-	}
+	destDir := saves.SaveDirectoryForGame(game.PlatformFSSlug, romPath, config)
 	if destDir == "" && len(local) > 0 {
 		destDir = filepath.Dir(local[0].FilePath)
 	}

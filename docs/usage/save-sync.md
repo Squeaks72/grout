@@ -273,6 +273,8 @@ on Launch is turned on. It syncs that one game right now and tells you what actu
 - **Took RomM's save**, with the date of RomM's save and of the one it replaced, which is kept as a backup.
 - **Sent this device's save to RomM**, with both dates when RomM said what it had.
 - **Already in sync**, said only when RomM's own checksum of its save matches the one on the device.
+- **RomM says there is nothing to do, but Grout could not check**, when RomM sent no checksum or the save on the device
+  could not be read. Grout does not claim the saves match in that case.
 - **Nothing changed**, with the reason: RomM's newest save is in a different slot from the one this device uses, or
   RomM asked for an upload of a save that is exactly what was last downloaded.
 - **A conflict or a choice needs you**, **Wi-Fi is off**, **RomM unreachable**, or **the game has saves in two

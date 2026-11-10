@@ -46,8 +46,16 @@ type SyncItem struct {
 	Action         SyncAction
 	Success        bool
 	ForceOverwrite bool
-	TargetSlot     string      // Slot to upload to (from slot preference); used by upload()
-	TimedOut       bool        // Set when RomM did not answer in time
+	TargetSlot     string // Slot to upload to (from slot preference); used by upload()
+	TimedOut       bool   // Set when RomM did not answer in time
+	// UploadOnly means this item may send the save but must never replace it. A
+	// server that turns an upload down because its own save is ahead would
+	// otherwise have the save on the device downloaded over.
+	UploadOnly bool
+	// AfterWrite, when set, runs right after a downloaded save has been written
+	// to the card and before anything else is asked of the server, so whatever
+	// has to follow the new save follows it even if the sync is stopped there.
+	AfterWrite     func()
 	AvailableSlots []string    // Distinct slot names when multiple slots exist (first-time downloads)
 	AllRemoteSaves []romm.Save // All remote saves for re-selection after slot pick
 }

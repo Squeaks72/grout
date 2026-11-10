@@ -212,8 +212,28 @@ func runLaunchSync(request launchSync) int {
 	plan := resolved.plan
 	planned := time.Since(started)
 
-	// From here on it runs to the end: a download interrupted partway is worse
-	// than one that makes the game wait.
+	// A downloaded save replaces progress that the game's resume state still holds,
+	// and the game would resume from the old snapshot and never show the new save.
+	// So the state is put aside the moment the save is on the card, before the
+	// requests that follow it: the script that started this stops it if it runs too
+	// long, and that must not happen between the two.
+	stateSetAside := false
+	for i := range plan.Items {
+		if plan.Items[i].Action != saves.ActionDownload {
+			continue
+		}
+		plan.Items[i].AfterWrite = func() {
+			moved, err := cfw.ActiveFirmware().SetAsideResumeState(romPath)
+			switch {
+			case err != nil:
+				logger.Error("Launch sync: could not set the resume state aside", "rom", romPath, "error", err)
+			case moved > 0:
+				logger.Info("Launch sync: set the resume state aside for the newer save", "rom", romPath, "files", moved)
+				stateSetAside = true
+			}
+		}
+	}
+
 	report := saves.ExecuteSaveSync(client, config, host.DeviceID, plan.Items, plan.SessionID, nil)
 	logger.Info("Launch sync finished", "rom", romPath,
 		"uploaded", report.Uploaded, "downloaded", report.Downloaded,
@@ -222,32 +242,22 @@ func runLaunchSync(request launchSync) int {
 		"planned", planned.Round(time.Millisecond),
 		"elapsed", time.Since(started).Round(time.Millisecond))
 
-	if report.Errors == 0 {
-		recent.RecordRom(romPath, time.Now())
-		if err := recent.Save(time.Now()); err != nil {
-			logger.Warn("Launch sync: could not note that the game was synced", "error", err)
-		}
-	}
-
-	stateSetAside := false
-	if report.Downloaded > 0 {
-		// The game would resume from a snapshot of the progress this save
-		// replaces, and the new save would never be seen.
-		moved, err := cfw.ActiveFirmware().SetAsideResumeState(romPath)
-		switch {
-		case err != nil:
-			logger.Error("Launch sync: could not set the resume state aside", "rom", romPath, "error", err)
-		case moved > 0:
-			logger.Info("Launch sync: set the resume state aside for the newer save", "rom", romPath, "files", moved)
-			stateSetAside = true
-		}
-	}
-
 	outcome := saves.DescribeSync(saves.SyncFacts{
 		Ops: plan.Ops, Dropped: plan.Dropped, Held: plan.Held, Report: report,
 		Local: plan.Local, LocalWrote: plan.LocalWrote, StateSetAside: stateSetAside,
 	})
 	reportOutcome(logger, romPath, outcome, plan)
+
+	// Only a sync that left the two sides agreeing counts as recent. One that
+	// left something undone (RomM's newer save that an upload-only run does not
+	// take, a conflict, a skipped instruction) must not make the next launch skip
+	// the sync that would finish it.
+	if outcome.Settled() {
+		recent.RecordRom(romPath, time.Now())
+		if err := recent.Save(time.Now()); err != nil {
+			logger.Warn("Launch sync: could not note that the game was synced", "error", err)
+		}
+	}
 	return exitCodeFor(outcome, stateSetAside)
 }
 
