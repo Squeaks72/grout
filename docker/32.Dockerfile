@@ -56,12 +56,15 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     LDFLAGS="-X 'grout/version.Version=$VERSION' \
              -X 'grout/version.GitCommit=$GIT_COMMIT' \
              -X 'grout/version.BuildDate=$BUILD_DATE' \
-             -X 'grout/version.BuildType=$BUILD_TYPE'"; \
+             -X 'grout/version.BuildType=$BUILD_TYPE' -s -w"; \
+    # Fork: a smaller download. -s -w drops the symbol table and debug info, and nonextuifonts leaves out the
+    # fonts the toolkit embeds for NextUI, which never runs from this 32-bit build.
+    GOBUILD_FLAGS="-trimpath -tags nonextuifonts"; \
     echo "=== Building grout for Miyoo Mini Plus (ARM32) ==="; \
     if [ "$USE_LOCAL_GABAGOOL" = "true" ]; then \
-        go build -ldflags "$LDFLAGS" -v -o grout ./app; \
+        go build $GOBUILD_FLAGS -ldflags "$LDFLAGS" -v -o grout ./app; \
     else \
-        GOWORK=off go build -ldflags "$LDFLAGS" -v -o grout ./app; \
+        GOWORK=off go build $GOBUILD_FLAGS -ldflags "$LDFLAGS" -v -o grout ./app; \
     fi
 
 CMD ["/bin/bash"]

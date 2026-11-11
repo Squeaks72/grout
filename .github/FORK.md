@@ -102,6 +102,13 @@ folders in `Saves/` can be deleted once the saves are confirmed good. After the 
 upstream ignores the fork's extra settings. If a hook line is ever left behind, search `Emu/*/launch.sh` for
 `# grout-sync-on-launch`, and copy `.tmp_update/runtime.sh.grout-backup` over `runtime.sh`.
 
+## What differs in the build
+
+`docker/32.Dockerfile` (the Onion/ARM32 build) strips symbols and debug info (`-s -w`, `-trimpath`) and builds with
+`-tags nonextuifonts`, which leaves out the ~8 MB of fonts the toolkit embeds for NextUI (never used on this
+32-bit build). Together that takes about 11 MB off the compressed program, to make the in-app update quicker on slow
+Wi-Fi. If upstream edits that `go build` block, keep their change and re-add these flags.
+
 ## Changing it
 
 Edit on a branch off `tim`, merge or push to `tim`, and the build runs. Do not open pull requests upstream for this
