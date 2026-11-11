@@ -25,19 +25,19 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Pinned: ubuntu-latest moved to 26.04, whose package mirror was not serving yet, so this step hung.
-      # A package mirror that stops answering used to hang this step for as long as the job was allowed to run.
-      # Each attempt is bounded, and a slow mirror is given up on and tried again.
+      # The runner's default package mirror (Azure's) has gone unanswering for hours at a time, which used to hang
+      # this step. Each attempt is bounded; if the default mirror does not answer, the main Ubuntu archive is used.
       - name: Install SDL2
         run: |
-          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
-          for attempt in 1 2 3; do
-            if timeout 240 sh -c "sudo apt-get $apt_opts update && sudo apt-get $apt_opts install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev"; then
-              exit 0
-            fi
-            echo "attempt $attempt failed, trying again"
-          done
-          exit 1
+          apt_opts="-o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          install() {
+            timeout 180 sh -c "sudo apt-get $apt_opts update && sudo apt-get $apt_opts install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev"
+          }
+          install && exit 0
+          echo "default mirror failed; using archive.ubuntu.com"
+          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|; s|http://azure.archive.ubuntu.com/ubuntu/\?|http://archive.ubuntu.com/ubuntu/|' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+          install
 
       - name: Formatting
         run: |
