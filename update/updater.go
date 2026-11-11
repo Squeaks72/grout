@@ -73,6 +73,13 @@ func CheckForUpdate(c cfw.CFW, releaseChannel settings.ReleaseChannel, host *set
 		}, nil
 	}
 
+	// This is the fork's build: it updates from the fork's releases. Moving to
+	// upstream is a deliberate act (Settings > Advanced > Switch to Upstream
+	// Grout), never something an update check does.
+	if c == cfw.Onion {
+		return CheckForkUpdate(c)
+	}
+
 	logger := gaba.GetLogger()
 
 	versions, err := FetchVersionsFile()

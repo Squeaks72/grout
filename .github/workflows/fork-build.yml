@@ -47,6 +47,9 @@ jobs:
           base=$(jq -r '.version' pak.json)
           sha=$(git rev-parse --short=7 HEAD)
           echo "base=$base" >> "$GITHUB_OUTPUT"
+          # The checkout's own commit: when fork-sync calls this, GITHUB_SHA is
+          # the commit the sync started from, not the one it pushed.
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "tag=${base}-tim.${sha}" >> "$GITHUB_OUTPUT"
 
       - name: Install Task
@@ -68,8 +71,28 @@ jobs:
           # it is upstream's number, not one with a suffix its parser may not know.
           GROUT_VERSION: ${{ steps.version.outputs.base }}
 
+      # The commit the package was built from, beside the executable. The app
+      # keeps upstream's version number, so this is how it tells builds apart.
+      - name: Stamp the build
+        run: echo "${{ steps.version.outputs.commit }}" > dist/Onion/Grout/grout/fork-build
+
       - name: Zip
         run: cd dist/Onion && zip -qr ../Grout-Onion-tim.zip Grout
+
+      # What the app's update button reads: the commit, and the immutable copy's
+      # address with its size and checksum.
+      - name: Write the update manifest
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          BASE: ${{ steps.version.outputs.base }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          jq -n --arg commit "$COMMIT" --arg tag "$TAG" --arg version "$BASE" \
+            --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Grout-Onion-tim.zip" \
+            --argjson size "$(stat -c %s dist/Grout-Onion-tim.zip)" \
+            --arg sha256 "$(sha256sum dist/Grout-Onion-tim.zip | cut -d' ' -f1)" \
+            '{commit:$commit, tag:$tag, version:$version, url:$url, size:$size, sha256:$sha256}' > dist/fork-update.json
+          cat dist/fork-update.json
 
       - name: Publish
         env:
@@ -82,11 +105,11 @@ jobs:
             "$(git log --format='- %s' origin/main..HEAD | head -40)")
 
           # The immutable copy first, so a failure below never leaves only the rolling one.
-          gh release create "$TAG" dist/Grout-Onion-tim.zip --target "$GITHUB_SHA" --title "$TAG" --notes "$notes" --prerelease
+          gh release create "$TAG" dist/Grout-Onion-tim.zip dist/fork-update.json --target "$GITHUB_SHA" --title "$TAG" --notes "$notes" --prerelease
 
           # The rolling one is deleted and recreated, which also moves its tag.
           gh release delete tim-latest --cleanup-tag --yes 2>/dev/null || true
-          gh release create tim-latest dist/Grout-Onion-tim.zip --target "$GITHUB_SHA" --title "Latest tim build" --notes "$notes" --prerelease
+          gh release create tim-latest dist/Grout-Onion-tim.zip dist/fork-update.json --target "$GITHUB_SHA" --title "Latest tim build" --notes "$notes" --prerelease
 
           # Keep the newest ten immutable builds.
           gh release list --limit 200 --json tagName,createdAt -q '[.[] | select(.tagName | test("-tim\\.[0-9a-f]+$"))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |

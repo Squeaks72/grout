@@ -19,8 +19,12 @@ Every push to `tim` and every sync builds the Onion package and publishes it as 
 
 Download `Grout-Onion-tim.zip`, unzip it, and copy the `Grout` folder to `App/` on the SD card.
 
-Grout's in-app updater knows nothing about this fork and will offer upstream's release. Taking it replaces this
-build with upstream's, which does not understand `--sync-rom`: turn **Sync on Launch** off first.
+Once a stamped build is installed (every build since the update channel was added), Grout's own update button
+updates to the newest `tim-latest` build. It never moves to upstream by itself: that is
+**Settings > Advanced > Switch to Upstream Grout**. Each build records the commit it came from in
+`Grout/grout/fork-build` and publishes `fork-update.json` (commit, address, size, SHA-256) beside the zip; the app
+compares the commit, since the fork keeps upstream's version number. The first stamped build has to be copied over by
+hand.
 
 ## How it stays current
 
