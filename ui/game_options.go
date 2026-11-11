@@ -341,21 +341,9 @@ func (s *GameOptionsScreen) offerToMoveSave(config *settings.Config, game romm.R
 func (s *GameOptionsScreen) resolveSaves(config *settings.Config, host settings.Host, duplicates saves.DuplicateSaves, romPath string) {
 	logger := gaba.GetLogger()
 
-	var client *romm.Client
-	var remote *romm.Save
-	if host.DeviceID != "" {
-		client = romm.NewClientFromHost(host, config.ApiTimeout.Duration())
-		gaba.ProcessMessage(
-			localize("resolve_saves_checking", "Checking RomM..."),
-			gaba.ProcessMessageOptions{ShowThemeBackground: true},
-			func() (any, error) {
-				var err error
-				if remote, err = saves.RemoteSaveFor(client, config, host.DeviceID, duplicates.RomID); err != nil {
-					logger.Warn("Could not look up RomM's save for the game", "rom", duplicates.RomName, "error", err)
-				}
-				return nil, nil
-			},
-		)
+	client, remote, proceed := lookUpRemoteSave(config, host, duplicates)
+	if !proceed {
+		return
 	}
 
 	options := make([]gaba.Option, 0, len(duplicates.Copies)+1)
@@ -494,6 +482,55 @@ func (s *GameOptionsScreen) resolveSaves(config *settings.Config, host settings.
 		}
 	}
 	gaba.ConfirmationMessage(done, ContinueFooter(), gaba.MessageOptions{})
+}
+
+// lookUpRemoteSave asks RomM for the game's save so it can be offered as a
+// choice. When RomM cannot be reached it says so and lets the player try again or
+// back out. It does not carry on with the device's copies alone: choosing one of
+// those makes the next sync send it as the newest, which is the very thing a
+// player who came here for RomM's save does not want. proceed is false when the
+// player backed out.
+func lookUpRemoteSave(config *settings.Config, host settings.Host, duplicates saves.DuplicateSaves) (client *romm.Client, remote *romm.Save, proceed bool) {
+	if host.DeviceID == "" {
+		return nil, nil, true
+	}
+	logger := gaba.GetLogger()
+	client = romm.NewClientFromHost(host, config.ApiTimeout.Duration())
+
+	for {
+		var err error
+		gaba.ProcessMessage(
+			localize("resolve_saves_checking", "Checking RomM..."),
+			gaba.ProcessMessageOptions{ShowThemeBackground: true},
+			func() (any, error) {
+				remote, err = saves.RemoteSaveFor(client, config, host.DeviceID, duplicates.RomID)
+				for _, wait := range settings.StartupRetryDelays {
+					if err == nil || !romm.IsTransient(romm.ClassifyError(err)) {
+						break
+					}
+					time.Sleep(wait)
+					remote, err = saves.RemoteSaveFor(client, config, host.DeviceID, duplicates.RomID)
+				}
+				return nil, nil
+			},
+		)
+		if err == nil {
+			return client, remote, true
+		}
+
+		logger.Error("Could not look up RomM's save for the game", "rom", duplicates.RomName, "error", err)
+		_, askErr := gaba.ConfirmationMessage(
+			localize("resolve_saves_unreachable", "Could not reach RomM, so its save\ncannot be offered. Check Wi-Fi and try again."),
+			[]gaba.FooterHelpItem{
+				{ButtonName: "B", HelpText: localize("button_cancel", "Cancel")},
+				{ButtonName: "X", HelpText: localize("button_retry", "Try Again")},
+			},
+			gaba.MessageOptions{ConfirmButton: buttons.VirtualButtonX},
+		)
+		if askErr != nil {
+			return client, nil, false
+		}
+	}
 }
 
 func modifiedAt(save saves.LocalSave) string {
