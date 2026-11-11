@@ -118,6 +118,8 @@ func (s *SaveSyncSettingsScreen) drawRegistered(input SaveSyncSettingsInput) (Sa
 	switch key := rows[result.Selected].key; key {
 	case "device_name":
 		return s.renameDevice(input, output)
+	case "clean_up_saves":
+		return s.cleanUpSaves(input, output)
 	default:
 		if action, leads := saveSyncDestinations[key]; leads {
 			output.Action = action
@@ -164,6 +166,7 @@ func saveSyncRows(host settings.Host) []settingRow {
 		})
 	}
 
+	rows = append(rows, clickableRow("clean_up_saves", "save_sync_clean_up", "Clean Up Saves"))
 	return append(rows, clickableRow("save_mapping", "sync_menu_save_mapping", "Save Mapping"))
 }
 

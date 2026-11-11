@@ -428,3 +428,10 @@ Saves are tied to your RomM user account. If you share your RomM account with ot
 - [Settings Reference](settings.md) - Configure Save Sync options
 - [User Guide](guide.md) - Complete feature documentation
 - [Quick Start Guide](../getting-started/index.md) - Get up and running quickly
+
+## Clean Up Saves
+
+Settings > Save Sync > **Clean Up Saves** finds saves on the device whose game is no longer on it. Grout lists the ones
+RomM already holds an identical copy of, and after you confirm with `X` moves them into the `.backup` folder beside
+them. Nothing is deleted. A save RomM does not have an identical copy of is never touched; it is only counted. If no
+games are found on the device at all (for example the card with your games is not mounted), nothing is done.
