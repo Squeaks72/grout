@@ -26,18 +26,25 @@ jobs:
           cache: true
 
       # The runner's default package mirror (Azure's) has gone unanswering for hours at a time, which used to hang
-      # this step. Each attempt is bounded; if the default mirror does not answer, the main Ubuntu archive is used.
+      # this step. Each attempt is bounded; if the default mirror does not answer, others are tried over https.
       - name: Install SDL2
         run: |
-          apt_opts="-o Acquire::Retries=2 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
+          apt_opts="-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15"
           install() {
-            timeout 180 sh -c "sudo apt-get $apt_opts update && sudo apt-get $apt_opts install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev"
+            timeout 120 sh -c "sudo apt-get $apt_opts update && sudo apt-get $apt_opts install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev"
           }
           install && exit 0
-          echo "default mirror failed; using archive.ubuntu.com"
-          sudo sed -i 's|mirror+file:/etc/apt/apt-mirrors.txt|http://archive.ubuntu.com/ubuntu/|; s|http://azure.archive.ubuntu.com/ubuntu/\?|http://archive.ubuntu.com/ubuntu/|' \
-            /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
-          install
+
+          sudo mkdir -p /tmp/apt-sources-backup
+          sudo cp -a /etc/apt/sources.list /etc/apt/sources.list.d /tmp/apt-sources-backup/ 2>/dev/null || true
+          for mirror in https://archive.ubuntu.com/ubuntu/ https://mirrors.edge.kernel.org/ubuntu/ https://mirror.us.leaseweb.net/ubuntu/; do
+            echo "default mirror failed; trying $mirror"
+            sudo cp -a /tmp/apt-sources-backup/sources.list.d/. /etc/apt/sources.list.d/ 2>/dev/null || true
+            sudo sed -i "s|mirror+file:/etc/apt/apt-mirrors.txt|$mirror|; s|https\?://[a-z.]*archive.ubuntu.com/ubuntu/\?|$mirror|; s|https\?://security.ubuntu.com/ubuntu/\?|$mirror|" \
+              /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+            install && exit 0
+          done
+          exit 1
 
       - name: Formatting
         run: |
