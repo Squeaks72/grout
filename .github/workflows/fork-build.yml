@@ -1,0 +1,91 @@
+name: Fork build
+
+# Builds the Miyoo Mini (Onion) package from `tim` and publishes it as a release on this fork:
+#
+#   tim-latest              the newest build, replaced every time (a pre-release, so it never reads as "latest")
+#   v<version>-tim.<sha>    an immutable copy of every build, for rolling back; the newest ten are kept
+#
+# Each carries Grout-Onion-tim.zip. Unzip it and copy the Grout folder to App/ on the SD card.
+#
+# Runs on every push to `tim`, by hand, and when fork-sync calls it.
+#
+# It builds the way upstream's release workflow does: on GitHub's native ARM runner, with the project's own
+# `task build:arm32` and `task package:onion`, so the binary is linked against the same libraries as a release.
+
+on:
+  push:
+    branches: [tim]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-build
+  cancel-in-progress: true
+
+jobs:
+  onion:
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: tim
+          # The release notes list what `tim` carries on top of `main`.
+          fetch-depth: 0
+
+      - name: Work out the version
+        id: version
+        run: |
+          base=$(jq -r '.version' pak.json)
+          sha=$(git rev-parse --short=7 HEAD)
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "tag=${base}-tim.${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and package for Onion
+        run: task build:arm32 package:onion
+        env:
+          # The version the app reports and compares with upstream's releases, so
+          # it is upstream's number, not one with a suffix its parser may not know.
+          GROUT_VERSION: ${{ steps.version.outputs.base }}
+
+      - name: Zip
+        run: cd dist/Onion && zip -qr ../Grout-Onion-tim.zip Grout
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          notes=$(printf 'Onion package built from `tim` at %s (upstream version %s).\n\nUnzip and copy the `Grout` folder to `App/` on the SD card.\n\nOn top of upstream:\n%s\n' \
+            "$(git rev-parse --short HEAD)" "${{ steps.version.outputs.base }}" \
+            "$(git log --format='- %s' origin/main..HEAD | head -40)")
+
+          # The immutable copy first, so a failure below never leaves only the rolling one.
+          gh release create "$TAG" dist/Grout-Onion-tim.zip --target "$GITHUB_SHA" --title "$TAG" --notes "$notes" --prerelease
+
+          # The rolling one is deleted and recreated, which also moves its tag.
+          gh release delete tim-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create tim-latest dist/Grout-Onion-tim.zip --target "$GITHUB_SHA" --title "Latest tim build" --notes "$notes" --prerelease
+
+          # Keep the newest ten immutable builds.
+          gh release list --limit 200 --json tagName,createdAt -q '[.[] | select(.tagName | test("-tim\\.[0-9a-f]+$"))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+            while read -r old; do
+              echo "pruning $old"
+              gh release delete "$old" --cleanup-tag --yes
+            done

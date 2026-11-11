@@ -1,0 +1,148 @@
+name: Fork sync
+
+# Keeps this fork current with upstream (rommapp/grout), then rebuilds.
+#
+# `main` is a pure mirror of upstream and is never committed to directly, so it can always be
+# fast-forwarded. `tim` is upstream plus this fork's own work (see .github/FORK.md), and is rebased onto
+# the new `main` on every sync: rebase rather than merge, so the work stays a readable list of commits on
+# top of a known upstream, and so a change that upstream has since adopted disappears on its own instead
+# of conflicting forever.
+#
+# Scheduled twice a day, because a dropped run is invisible: GitHub queues scheduled workflows under load
+# and skips some outright, which is an absence this workflow cannot see and alert on. The second run is
+# almost always a no-op -- with `tim` already on top of upstream the sync exits early and no build starts.
+# Run it by hand when the fork is behind and no run explains why:
+#
+#   gh workflow run fork-sync.yml --repo Squeaks72/grout --ref tim
+#
+# When replaying the commits one at a time conflicts, the NET change is tried as a single commit on top of
+# upstream (the old stack is kept as a tag, tim-pre-sync-YYYYMMDD), and the one kind of file that only ever
+# conflicts mechanically, the locale strings both sides appended to, is merged by
+# .github/scripts/fork-resolve.mjs. Anything else is a real collision with upstream: the run fails and
+# nothing is pushed, because a silently dropped change is worse than a stale build. (Issues are disabled on
+# this fork, so the failed run and its email are the alert.)
+#
+# Pushing needs the SYNC_TOKEN secret: a fine-grained PAT on this repo, with Contents and Workflows
+# read/write. GITHUB_TOKEN can never push a commit that adds or changes a file under .github/workflows/, and
+# upstream does that from time to time, so without it the mirror is refused on those days.
+#
+# Upstream's own workflows (CI, docs, e2e, release) are kept DISABLED here: a new one arrives enabled. So
+# the order below is: rebase, push `tim` (the default branch, which registers any new workflow), disable
+# anything that is not fork-*.yml, and only then mirror `main`.
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+    - cron: '43 11 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      changed: ${{ steps.rebase.outputs.changed }}
+      version: ${{ steps.rebase.outputs.version }}
+      # A push made with a PAT triggers fork-build on its own; one made with GITHUB_TOKEN does
+      # not, and then the build job below has to call it.
+      pushed_with_pat: ${{ steps.rebase.outputs.pushed_with_pat }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: a rebase needs the merge base, and a shallow clone cannot find one.
+          fetch-depth: 0
+          ref: tim
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Rebase the work onto upstream
+        id: rebase
+        env:
+          HAS_PAT: ${{ secrets.SYNC_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          git config user.name  "Squeaks72"
+          git config user.email "18704769+Squeaks72@users.noreply.github.com"
+          git remote add upstream https://github.com/rommapp/grout.git
+          git fetch --tags upstream main
+          echo "pushed_with_pat=$HAS_PAT" >> "$GITHUB_OUTPUT"
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "already on top of upstream/main"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          orig=$(git rev-parse HEAD)
+          if ! git rebase upstream/main; then
+            git rebase --abort || true
+            # Replaying the commits one at a time can conflict where the sum of them does not: a
+            # change and its later fix-up, or two commits that both touch a hunk upstream moved. So
+            # try the NET change as one commit on top of upstream. What conflicts there is a real
+            # collision with upstream, apart from what fork-resolve.mjs knows how to merge.
+            echo "::warning title=Replay conflicted::trying the net change as one commit"
+            tag="tim-pre-sync-$(date -u +%Y%m%d)"
+            git tag -f "$tag" "$orig"
+            git push -f origin "refs/tags/$tag"
+            git checkout -q --detach upstream/main
+            if ! git merge --squash "$orig"; then
+              if ! node .github/scripts/fork-resolve.mjs; then
+                git merge --abort 2>/dev/null || git reset -q --hard
+                echo "changed=false" >> "$GITHUB_OUTPUT"
+                exit 1
+              fi
+            fi
+            version=$(jq -r '.version' pak.json)
+            { echo "Fork work on top of upstream ${version}"; echo
+              echo "The commits, replayed one at a time, conflicted with upstream; their net change"
+              echo "applies as this one commit. The stack it replaces is tag ${tag}:"; echo
+              git log --reverse --format='  %h %s' "$(git merge-base "$orig" upstream/main)..$orig"; } > /tmp/squash-msg.txt
+            git commit -q -F /tmp/squash-msg.txt
+            git checkout -q -B tim
+          fi
+
+          if ! git diff --quiet "$(git merge-base "$orig" upstream/main)" upstream/main -- .github/workflows \
+             && [ "$HAS_PAT" != "true" ]; then
+            echo "::error title=SYNC_TOKEN needed::upstream changed .github/workflows/, which GITHUB_TOKEN may not push. Add a SYNC_TOKEN secret (fine-grained PAT: this repo, Contents + Workflows read/write)."
+            exit 1
+          fi
+
+          git push --force-with-lease origin tim
+          version=$(jq -r '.version' pak.json)
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Synced::now on upstream ${version}"
+
+      - name: Keep upstream's workflows disabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # A workflow file new to the default branch takes a moment to register.
+          sleep 10
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows" --paginate \
+            --jq '.workflows[] | select(.state == "active") | select(.path | test("/fork-[^/]+\\.ya?ml$") | not) | "\(.id) \(.path)"' |
+          while read -r id path; do
+            echo "::notice title=Disabled upstream workflow::$path"
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/$id/disable"
+          done
+
+      - name: Mirror upstream onto main
+        run: |
+          set -euo pipefail
+          # Always a fast-forward, because nothing ever commits to main here.
+          git push --force origin "upstream/main:refs/heads/main"
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true' && needs.sync.outputs.pushed_with_pat != 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/fork-build.yml
