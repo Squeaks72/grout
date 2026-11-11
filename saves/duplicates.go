@@ -1,6 +1,7 @@
 package saves
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -213,6 +214,9 @@ func RemoteSaveFor(client *romm.Client, config *settings.Config, deviceID string
 // The download comes first and is the only thing that can fail before anything
 // local is touched, and it backs up the copy it replaces, so a failed download
 // leaves every local copy as it was.
+// ErrDownloadTimedOut is returned when RomM did not send its save in time.
+var ErrDownloadTimedOut = errors.New("RomM took too long to send its save")
+
 func UseRemoteSave(client *romm.Client, config *settings.Config, deviceID string, duplicates DuplicateSaves, remote *romm.Save, destDir string) error {
 	if remote == nil {
 		return fmt.Errorf("no save to use")
@@ -239,7 +243,7 @@ func UseRemoteSave(client *romm.Client, config *settings.Config, deviceID string
 			TargetSlot: SlotName(remote.Slot),
 		}
 		if !download(client, config, deviceID, &item) {
-			return fmt.Errorf("could not download RomM's save")
+			return downloadFailure(item)
 		}
 		return nil
 	}
@@ -274,7 +278,7 @@ func UseRemoteSave(client *romm.Client, config *settings.Config, deviceID string
 		TargetSlot: SlotName(remote.Slot),
 	}
 	if !download(client, config, deviceID, &item) {
-		return fmt.Errorf("could not download RomM's save")
+		return downloadFailure(item)
 	}
 
 	var failed []string
@@ -293,6 +297,14 @@ func UseRemoteSave(client *romm.Client, config *settings.Config, deviceID string
 		return fmt.Errorf("RomM's save is in place but %d other copies could not be put away: %s", len(failed), strings.Join(failed, "; "))
 	}
 	return nil
+}
+
+// downloadFailure says why a download did not happen, as far as is known.
+func downloadFailure(item SyncItem) error {
+	if item.TimedOut {
+		return ErrDownloadTimedOut
+	}
+	return fmt.Errorf("could not download RomM's save")
 }
 
 // tidyIdenticalCopies puts away the extra copies of a game's save that are

@@ -3,6 +3,7 @@ package saves
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,5 +108,14 @@ func TestPutAwayOrphans_MovesEveryFolderOfASaveKeptAsFolders(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Join(dir, ".backup")); len(entries) != 2 {
 		t.Errorf("backup holds %d entries, want 2", len(entries))
+	}
+}
+
+func TestDownloadFailure_NamesATimeout(t *testing.T) {
+	if !errors.Is(downloadFailure(SyncItem{TimedOut: true}), ErrDownloadTimedOut) {
+		t.Error("a timed-out download was not reported as one")
+	}
+	if errors.Is(downloadFailure(SyncItem{}), ErrDownloadTimedOut) {
+		t.Error("a failed download was reported as a timeout")
 	}
 }

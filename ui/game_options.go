@@ -449,8 +449,12 @@ func (s *GameOptionsScreen) resolveSaves(config *settings.Config, host settings.
 	}
 	if err != nil {
 		logger.Error("Failed to resolve the game's saves", "rom", duplicates.RomName, "error", err)
+		message := localize("resolve_saves_failed", "Could not resolve the saves.\nSee the Grout logs.")
+		if errors.Is(err, saves.ErrDownloadTimedOut) {
+			message = localize("resolve_saves_timed_out", "RomM took too long to send its save.\nNothing was changed. Try again\nwhen the connection is better.")
+		}
 		gaba.ConfirmationMessage(
-			localize("resolve_saves_failed", "Could not resolve the saves.\nSee the Grout logs."),
+			message,
 			ContinueFooter(),
 			gaba.MessageOptions{},
 		)
