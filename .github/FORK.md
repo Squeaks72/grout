@@ -42,20 +42,50 @@ workflows are kept disabled here.
 
 ## The plan to stop using this fork
 
-This fork exists only because upstream will not take the work. The goal it serves is: **on Onion (Miyoo Mini), a
-game's save is brought up to date from RomM automatically as the game starts, and sent back after it is quit,
-without opening Grout or pressing anything first.** When upstream does that, the fork is no longer needed, and the
-intent is to move back to upstream's release and switch the automation off altogether.
+This fork exists only because upstream will not take the work. The intent is to move back to upstream's release and
+switch the automation off, but **only once upstream adequately handles every feature below**. One feature missing
+means the fork stays, because moving back would lose it.
 
-The nightly Claude caretaker task (see below) watches for this. It classifies upstream as:
+"Adequately" means a player gets the same outcome, not the same implementation: upstream may use a different hook,
+a launcher, a service or a different screen. It does not have to match the fork's wording or layout.
 
-- **Full**: a published upstream release (not a pull request, branch or pre-release) that does the above on Onion
-  automatically. The fork is retired: the caretaker disables `fork-sync.yml` and `fork-build.yml`, marks this file as
-  retired, turns itself off, and reports the checklist for the Miyoo. Nothing is deleted; re-enabling the workflows
-  undoes it.
-- **Partial**: upstream does some of it, but needs a manual step (a sync button, launching games from inside Grout, a
-  subset of the features). Reported as worth a look; nothing changes.
-- **None**: nothing to do.
+### Feature checklist
+
+The nightly caretaker keeps the Status column current (`Fork only` or `Upstream` plus the release/PR that covers it)
+and records when a feature was dropped from the fork because upstream took over (upstream wins on overlap).
+
+| # | Feature | What upstream has to do | Status |
+|---|---------|-------------------------|--------|
+| 1 | Sync before launch | On Onion, bring a game's save up to date from RomM as the game starts, with no step by the player, stopping quietly with no known Wi-Fi | Fork only |
+| 2 | Upload after quit and at power-off | Send the save back after the game is quit, and when the device is powered off from the game | Fork only |
+| 3 | Games on a core of their own | The launch and after-quit sync also covers games given a per-game core (not just games started through the emulator's `launch.sh`) | Fork only |
+| 4 | Resume state | A downloaded save is not undone by the game's auto resume state | Fork only |
+| 5 | Sync save in the game's Y menu | A per-game "sync this save now" entry reachable from the game list, with no need to open Grout first | Fork only |
+| 6 | Honest sync results | A sync says what it did (took RomM's save, sent the device's, really in sync, or why nothing happened), never a bare "up to date" | Fork only |
+| 7 | Game Core row | Set a downloaded game's core in Grout, with its save following that core's folder | Fork only |
+| 8 | Saves in two core folders | Detect a game whose save sits in more than one core folder and let the player settle it, including choosing RomM's save | Fork only |
+| 9 | Use RomM's Save / Upload Local Save | Per-game override of which side wins, with a confirmation, whatever is newer | Fork only |
+| 10 | Clean Up Saves | Put away saves of games no longer on the device, only when RomM holds an identical copy, never deleting | Fork only |
+| 11 | DNS vs network error wording and short startup retry | A resolver that is not answering yet is not reported as "could not resolve hostname" | Fork only |
+
+Not a feature to cover: the **Switch to Upstream Grout** button and the fork's own build and sync workflows.
+
+### How the caretaker decides
+
+The nightly Claude caretaker task (see below) reads upstream every night and rates each feature above as covered or
+not covered, and then rates upstream overall:
+
+- **Full**: every feature above is covered by a **published, non-prerelease** upstream release at least 48 hours old,
+  shown by both its docs or changelog and its code. Only then is the fork retired: the caretaker marks this file as
+  retired, disables the `fork-*` workflows, turns itself off, and reports the checklist for the Miyoo. Nothing is
+  deleted; re-enabling the workflows undoes it.
+- **Partial**: at least one feature is not covered, covered only by a button, only inside Grout, only on some
+  platforms, or only in an unreleased branch, pull request or pre-release. Reported as worth a look with the list of
+  what is still missing; nothing changes.
+- **None**: nothing relevant.
+
+If upstream covers one feature before the rest, upstream wins on that feature: the fork drops its own version (Status
+becomes `Upstream`) and keeps the rest. A fork whose every row reads `Upstream` is a Full.
 
 Moving the Miyoo back is one button: **Settings > Advanced > Switch to Upstream Grout**. After a confirmation (press
 X) it downloads upstream's current stable release (whatever its version number, checksum-verified), then removes the
