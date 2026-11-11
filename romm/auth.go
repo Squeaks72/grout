@@ -1,6 +1,7 @@
 package romm
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -73,14 +74,43 @@ func (c *Client) ValidateConnection() error {
 // only just joined Wi-Fi often cannot look up a name for a few seconds, and
 // giving up on the first attempt reports a fault that is not there.
 func (c *Client) ValidateConnectionRetrying(delays []time.Duration, retryIf func(error) bool) error {
-	err := c.ValidateConnection()
-	for attempt, wait := range delays {
+	return retrying(c.ValidateConnection, delays, retryIf)
+}
+
+// ValidateTokenRetrying is ValidateToken with the same patience. The check asks
+// for the whole platform list over a link that may only just have come up, so a
+// slow first answer is common and says nothing about the token.
+func (c *Client) ValidateTokenRetrying(delays []time.Duration, retryIf func(error) bool) error {
+	return retrying(c.validateTokenClassified, delays, retryIf)
+}
+
+// validateTokenClassified is ValidateToken with a failed request told apart
+// from the server's answer. A response from the server is left alone: its body
+// is not a description of what went wrong with the connection.
+func (c *Client) validateTokenClassified() error {
+	err := c.ValidateToken()
+	var apiErr *APIError
+	if err == nil || errors.As(err, &apiErr) {
+		return err
+	}
+	return ClassifyError(err)
+}
+
+// IsAuthRejection reports whether the server refused the credentials, as
+// opposed to the request failing for some other reason.
+func IsAuthRejection(err error) bool {
+	return errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrForbidden)
+}
+
+func retrying(attempt func() error, delays []time.Duration, retryIf func(error) bool) error {
+	err := attempt()
+	for n, wait := range delays {
 		if err == nil || !retryIf(err) {
 			return err
 		}
-		slog.Default().Debug("Server not reachable yet, trying again", "attempt", attempt+1, "wait", wait, "error", err)
+		slog.Default().Debug("Server not reachable yet, trying again", "attempt", n+1, "wait", wait, "error", err)
 		time.Sleep(wait)
-		err = c.ValidateConnection()
+		err = attempt()
 	}
 	return err
 }

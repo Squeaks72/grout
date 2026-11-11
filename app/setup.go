@@ -294,8 +294,15 @@ func connectAndLoadPlatforms(config *settings.Config, logger *slog.Logger) []rom
 				authErr = errors.New("stored basic-auth credentials require re-pairing")
 				return nil, nil
 			}
-			if err := authClient.ValidateToken(); err != nil {
-				authErr = err
+			if err := authClient.ValidateTokenRetrying(settings.StartupRetryDelays, romm.IsTransient); err != nil {
+				// Only the server refusing the token means it needs replacing. A
+				// slow or failed request says nothing about the token, and
+				// calling it expired sends the player through a new pairing.
+				if romm.IsAuthRejection(err) {
+					authErr = err
+				} else {
+					connErr = err
+				}
 				return nil, nil
 			}
 			if host.Username == "" {
@@ -338,7 +345,7 @@ func connectAndLoadPlatforms(config *settings.Config, logger *slog.Logger) []rom
 		})
 
 		if connErr != nil {
-			logger.Warn("Server connectivity failed", "error", connErr)
+			logger.Error("Server connectivity failed", "error", connErr)
 			errorMessage := classifyStartupError(connErr)
 			if !showStartupError(i18n.Localize(errorMessage, nil)) {
 				gaba.Close()
@@ -348,7 +355,7 @@ func connectAndLoadPlatforms(config *settings.Config, logger *slog.Logger) []rom
 		}
 
 		if authErr != nil {
-			logger.Warn("Auth validation failed", "error", authErr)
+			logger.Error("Auth validation failed", "error", authErr)
 			config = handleAuthFailure(config, logger)
 			continue
 		}
