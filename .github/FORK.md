@@ -40,6 +40,33 @@ The `SYNC_TOKEN` secret (a fine-grained PAT on this repo with Contents and Workf
 days upstream changes a file under `.github/workflows/`, which `GITHUB_TOKEN` is not allowed to push. Upstream's own
 workflows are kept disabled here.
 
+## The plan to stop using this fork
+
+This fork exists only because upstream will not take the work. The goal it serves is: **on Onion (Miyoo Mini), a
+game's save is brought up to date from RomM automatically as the game starts, and sent back after it is quit,
+without opening Grout or pressing anything first.** When upstream does that, the fork is no longer needed, and the
+intent is to move back to upstream's release and switch the automation off altogether.
+
+The nightly Claude caretaker task (see below) watches for this. It classifies upstream as:
+
+- **Full**: a published upstream release (not a pull request, branch or pre-release) that does the above on Onion
+  automatically. The fork is retired: the caretaker disables `fork-sync.yml` and `fork-build.yml`, marks this file as
+  retired, turns itself off, and reports the checklist for the Miyoo. Nothing is deleted; re-enabling the workflows
+  undoes it.
+- **Partial**: upstream does some of it, but needs a manual step (a sync button, launching games from inside Grout, a
+  subset of the features). Reported as worth a look; nothing changes.
+- **None**: nothing to do.
+
+Moving the Miyoo back is done by hand, on the device:
+
+1. In this build's Grout: Settings > Save Sync, set **Cover Core Overrides** to False and restart the device, then set
+   **Sync on Launch** to **Off**. Turning it off removes the lines Grout added to each emulator's `launch.sh`.
+2. Delete `App/romscripts/Grout - Sync save.sh`, and check that no `Emu/*/launch.sh` still contains
+   `# grout-sync-on-launch`. If `.tmp_update/runtime.sh` still has such lines, copy `runtime.sh.grout-backup` over it.
+3. Install upstream's current release over `App/Grout`, keeping `grout/config.json`.
+4. Per-game cores live in Onion's own `Roms/<system>/.game_config/` and keep working. The `.backup` folders in
+   `Saves/` can be deleted once the saves are confirmed good.
+
 ## Changing it
 
 Edit on a branch off `tim`, merge or push to `tim`, and the build runs. Do not open pull requests upstream for this

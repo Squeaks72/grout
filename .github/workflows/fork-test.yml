@@ -1,0 +1,55 @@
+name: Fork test
+
+# The checks upstream's CI runs, so that an upstream sync that rebases cleanly but breaks something
+# is caught before a package is published, and so that a repair can be verified on GitHub: pushing any
+# branch other than main (or tim, whose pushes run this through fork-build) runs it.
+
+on:
+  push:
+    branches-ignore: [main, tim]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install SDL2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
+
+      - name: Formatting
+        run: |
+          unformatted=$(gofmt -l . | grep -v '^vendored/' | grep -v '^site/' || true)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Package layering
+        run: go run ./tools/archcheck -v
+
+      - name: Platform docs are current
+        run: go run ./tools/gen-platform-docs -check
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -race
