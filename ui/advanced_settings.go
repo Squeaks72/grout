@@ -66,6 +66,9 @@ func (s *AdvancedSettingsScreen) Draw(input AdvancedSettingsInput) (AdvancedSett
 			if action == AdvancedSettingsActionResetInputMapping {
 				return s.resetInputMapping(output)
 			}
+			if action == AdvancedSettingsActionSwitchToUpstream {
+				return s.switchToUpstream(input, output)
+			}
 			output.Action = action
 			return output, nil
 		}
@@ -121,6 +124,7 @@ var advancedDestinations = map[string]AdvancedSettingsAction{
 	"server_address":      AdvancedSettingsActionServerAddress,
 	"input_mapping":       AdvancedSettingsActionInputMapping,
 	"reset_input_mapping": AdvancedSettingsActionResetInputMapping,
+	"switch_to_upstream":  AdvancedSettingsActionSwitchToUpstream,
 }
 
 func advancedRows() []settingRow {
@@ -161,6 +165,7 @@ func advancedRows() []settingRow {
 			def:     settings.LogLevelError,
 		},
 		clickableRow("input_mapping", "settings_input_mapping", "Input Mapping"),
+		clickableRow("switch_to_upstream", "settings_switch_to_upstream", "Switch to Upstream Grout"),
 	}
 
 	// Newer muOS mounts each card on its own, so the roms could be on any of

@@ -770,6 +770,12 @@ func transitionAdvancedSettings(ctx *transitionContext, result any) (router.Scre
 		ctx.stack.Push(ScreenAdvancedSettings, pushInput, r)
 		return ScreenInputMapping, nil
 
+	case ui.AdvancedSettingsActionSwitchToUpstream:
+		// The new version is staged and the launcher swaps it in on the next
+		// run, so there is nothing left for this one to do.
+		os.Exit(0)
+		return popOrExit(ctx.stack)
+
 	case ui.AdvancedSettingsActionResetInputMapping:
 		// The toolkit reads the mapping once at startup, so the reset only
 		// takes effect on the next run. The screen has already said so.

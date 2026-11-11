@@ -98,3 +98,33 @@ func assetNameFor(t *testing.T) string {
 	}
 	return name
 }
+
+// A fork's build can carry any version number, so the switch back to upstream
+// must be offered even when upstream's release is not newer than what is
+// installed.
+func TestOfferAsset_OffersARelease_ThatIsNotNewer(t *testing.T) {
+	release := &ChannelRelease{
+		Version: "1.0.0",
+		Assets: map[string]*ChannelAsset{
+			assetNameFor(t): {URL: "https://example.invalid/grout.zip", Size: 1024, SHA256: strings.Repeat("a", 64)},
+		},
+	}
+	info := &Info{CurrentVersion: "99.0.0", LatestVersion: release.Version}
+
+	if err := offerAsset(cfw.MuOS, release, info); err != nil {
+		t.Fatalf("offerAsset: %v", err)
+	}
+	if !info.UpdateAvailable || info.DownloadURL == "" || info.AssetSHA256 == "" {
+		t.Errorf("release was not offered: %+v", info)
+	}
+}
+
+func TestOfferAsset_StillRefusesNoChecksum(t *testing.T) {
+	release := &ChannelRelease{
+		Version: "1.0.0",
+		Assets:  map[string]*ChannelAsset{assetNameFor(t): {URL: "https://example.invalid/grout.zip"}},
+	}
+	if err := offerAsset(cfw.MuOS, release, &Info{}); err == nil {
+		t.Fatal("an asset with no checksum was offered")
+	}
+}

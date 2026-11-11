@@ -57,15 +57,16 @@ The nightly Claude caretaker task (see below) watches for this. It classifies up
   subset of the features). Reported as worth a look; nothing changes.
 - **None**: nothing to do.
 
-Moving the Miyoo back is done by hand, on the device:
+Moving the Miyoo back is one button: **Settings > Advanced > Switch to Upstream Grout**. After a confirmation (press
+X) it downloads upstream's current stable release (whatever its version number, checksum-verified), then removes the
+fork's additions: the `launch.sh` lines, the `runtime.sh` lines, the Y-menu "Sync save (Grout)" script, and it turns
+Sync on Launch and Cover Core Overrides off. Grout exits and the launcher swaps the new version in on the next start.
+If the download fails nothing is changed.
 
-1. In this build's Grout: Settings > Save Sync, set **Cover Core Overrides** to False and restart the device, then set
-   **Sync on Launch** to **Off**. Turning it off removes the lines Grout added to each emulator's `launch.sh`.
-2. Delete `App/romscripts/Grout - Sync save.sh`, and check that no `Emu/*/launch.sh` still contains
-   `# grout-sync-on-launch`. If `.tmp_update/runtime.sh` still has such lines, copy `runtime.sh.grout-backup` over it.
-3. Install upstream's current release over `App/Grout`, keeping `grout/config.json`.
-4. Per-game cores live in Onion's own `Roms/<system>/.game_config/` and keep working. The `.backup` folders in
-   `Saves/` can be deleted once the saves are confirmed good.
+What it leaves alone: per-game cores in Onion's own `Roms/<system>/.game_config/` keep working, and the `.backup`
+folders in `Saves/` can be deleted once the saves are confirmed good. After the swap, `grout/config.json` is kept;
+upstream ignores the fork's extra settings. If a hook line is ever left behind, search `Emu/*/launch.sh` for
+`# grout-sync-on-launch`, and copy `.tmp_update/runtime.sh.grout-backup` over `runtime.sh`.
 
 ## Changing it
 

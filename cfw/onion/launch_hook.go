@@ -42,6 +42,12 @@ func InstallSyncSaveMenuEntry() error {
 	return setSyncSaveMenuEntry(SyncSaveMenuEntryPath(), SyncScriptPath(), true)
 }
 
+// RemoveSyncSaveMenuEntry takes the "Sync save" entry out of the Y menu. It
+// only removes a script Grout wrote.
+func RemoveSyncSaveMenuEntry() error {
+	return setSyncSaveMenuEntry(SyncSaveMenuEntryPath(), SyncScriptPath(), false)
+}
+
 // SyncSaveMenuEntryPath is where the Y menu's "Sync save" script goes. Onion
 // lists every script in this folder in the game list's options menu.
 func SyncSaveMenuEntryPath() string {

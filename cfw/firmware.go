@@ -121,6 +121,9 @@ type Firmware struct {
 	// programs can extend have one.
 	installSyncMenuEntry func() error
 
+	// removeSyncMenuEntry takes that entry out again.
+	removeSyncMenuEntry func() error
+
 	// gameCores, when set, lists the cores a single game can be given, out of
 	// those that keep their saves in one of the given folders. setGameCore
 	// gives the game one of them, or takes its choice away. Only firmwares that
@@ -228,6 +231,15 @@ func (f *Firmware) InstallSyncMenuEntry() error {
 		return nil
 	}
 	return f.installSyncMenuEntry()
+}
+
+// RemoveSyncMenuEntry takes Grout's "Sync save" entry out of the frontend's
+// per-game menu.
+func (f *Firmware) RemoveSyncMenuEntry() error {
+	if f == nil || f.removeSyncMenuEntry == nil {
+		return nil
+	}
+	return f.removeSyncMenuEntry()
 }
 
 // SetAsideResumeState makes the game start from its save file the next time it
@@ -511,6 +523,7 @@ var firmwares = map[CFW]*Firmware{
 		},
 		setGameCore:          onion.SetGameCore,
 		installSyncMenuEntry: onion.InstallSyncSaveMenuEntry,
+		removeSyncMenuEntry:  onion.RemoveSyncSaveMenuEntry,
 		runtimeHook:          onion.SetRuntimeHook,
 		packaging:            Packaging{Asset: "Grout-Onion.zip", LaunchScript: "Grout/launch.sh", InstallDepth: 3},
 	},

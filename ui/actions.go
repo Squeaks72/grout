@@ -102,6 +102,7 @@ const (
 	AdvancedSettingsActionServerAddress
 	AdvancedSettingsActionInputMapping
 	AdvancedSettingsActionResetInputMapping
+	AdvancedSettingsActionSwitchToUpstream
 	AdvancedSettingsActionBack
 )
 

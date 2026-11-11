@@ -137,14 +137,23 @@ func checkRelease(c cfw.CFW, release *ChannelRelease, currentVersion string) (*I
 		return info, nil
 	}
 
+	if err := offerAsset(c, release, info); err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
+// offerAsset fills in where to download the release for this device, and
+// marks it available.
+func offerAsset(c cfw.CFW, release *ChannelRelease, info *Info) error {
 	assetName := GetDistributionAssetName(c)
 	if assetName == "" {
-		return nil, fmt.Errorf("unsupported platform for updates")
+		return fmt.Errorf("unsupported platform for updates")
 	}
 
 	asset, ok := release.Assets[assetName]
 	if !ok {
-		return nil, fmt.Errorf("update not found for platform: %s", assetName)
+		return fmt.Errorf("update not found for platform: %s", assetName)
 	}
 
 	// The checksum is what pins the download, and it arrives in the same
@@ -152,14 +161,37 @@ func checkRelease(c cfw.CFW, release *ChannelRelease, currentVersion string) (*I
 	// nothing to check would let that document waive its own verification, so
 	// an asset without one is not offered at all.
 	if asset.SHA256 == "" {
-		return nil, fmt.Errorf("no checksum published for %s", assetName)
+		return fmt.Errorf("no checksum published for %s", assetName)
 	}
 
 	info.UpdateAvailable = true
 	info.DownloadURL = asset.URL
 	info.AssetSize = asset.Size
 	info.AssetSHA256 = asset.SHA256
+	return nil
+}
 
+// CheckUpstreamRelease finds upstream's current stable release for this
+// device whether or not it is newer than the installed version. A build from a
+// fork can carry any version number, so "newer" says nothing about whether it
+// is the upstream project's.
+func CheckUpstreamRelease(c cfw.CFW) (*Info, error) {
+	versions, err := FetchVersionsFile()
+	if err != nil {
+		return nil, fmt.Errorf("failed to check for updates: %w", err)
+	}
+	if versions.Stable == nil {
+		return nil, fmt.Errorf("no stable release available")
+	}
+
+	info := &Info{
+		CurrentVersion: version.Get().Version,
+		LatestVersion:  versions.Stable.Version,
+		ReleaseNotes:   versions.Stable.Notes,
+	}
+	if err := offerAsset(c, versions.Stable, info); err != nil {
+		return nil, err
+	}
 	return info, nil
 }
 
