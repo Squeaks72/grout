@@ -10,7 +10,6 @@ import (
 	"grout/settings"
 	"grout/version"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -216,12 +215,16 @@ func PerformUpdate(c cfw.CFW, downloadURL string, expectedSize int64, expectedSH
 		return err
 	}
 
-	tmpZip := filepath.Join(os.TempDir(), "grout-update.zip")
-	defer os.Remove(tmpZip)
+	// Named for the release, so a later attempt picks up where this one stopped
+	// and a different release never mixes with it. It is only removed once the
+	// download is finished or known to be bad; a failure part-way keeps it.
+	tmpZip := partialDownloadPath(expectedSHA256)
+	removeOtherPartials(tmpZip)
 
-	if err := downloadFile(downloadURL, tmpZip, expectedSize, progress); err != nil {
+	if err := downloadResumable(downloadURL, tmpZip, expectedSize, progress, defaultDownloadOptions()); err != nil {
 		return fmt.Errorf("failed to download update: %w", err)
 	}
+	defer os.Remove(tmpZip)
 
 	if err := verifySHA256(tmpZip, expectedSHA256); err != nil {
 		return err
@@ -326,70 +329,6 @@ func verifySHA256(filePath, expected string) error {
 	actual := hex.EncodeToString(h.Sum(nil))
 	if actual != expected {
 		return fmt.Errorf("download did not match expected hash")
-	}
-
-	return nil
-}
-
-func downloadFile(url, destPath string, expectedSize int64, progress *atomic.Float64) error {
-	client := &http.Client{
-		Timeout: settings.UpdaterTimeout,
-	}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("User-Agent", "Grout-Updater")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status: %d", resp.StatusCode)
-	}
-
-	out, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	// Use the known asset size for progress tracking; fall back to Content-Length
-	totalSize := expectedSize
-	if totalSize <= 0 {
-		totalSize = resp.ContentLength
-	}
-	if totalSize <= 0 {
-		totalSize = 1
-	}
-
-	var written int64
-	buf := make([]byte, 32*1024)
-
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			nw, writeErr := out.Write(buf[:n])
-			if writeErr != nil {
-				return writeErr
-			}
-			written += int64(nw)
-
-			if progress != nil {
-				progress.Store(float64(written) / float64(totalSize))
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return readErr
-		}
 	}
 
 	return nil
