@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -25,6 +25,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Pinned: ubuntu-latest moved to 26.04, whose package mirror was not serving yet, so this step hung.
       # A package mirror that stops answering used to hang this step for as long as the job was allowed to run.
       # Each attempt is bounded, and a slow mirror is given up on and tried again.
       - name: Install SDL2
