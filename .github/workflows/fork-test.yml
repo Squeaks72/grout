@@ -25,10 +25,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # A package mirror that stops answering used to hang this step for as long as the job was allowed to run.
+      # Each attempt is bounded, and a slow mirror is given up on and tried again.
       - name: Install SDL2
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"
+          for attempt in 1 2 3; do
+            if timeout 240 sh -c "sudo apt-get $apt_opts update && sudo apt-get $apt_opts install -y libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libsdl2-gfx-dev"; then
+              exit 0
+            fi
+            echo "attempt $attempt failed, trying again"
+          done
+          exit 1
 
       - name: Formatting
         run: |
