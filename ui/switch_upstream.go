@@ -47,6 +47,7 @@ func (s *AdvancedSettingsScreen) switchToUpstream(input AdvancedSettingsInput, o
 	}
 
 	progress := &atomic.Float64{}
+	release := cfw.KeepAwake()
 	_, err = gaba.ProcessMessage(
 		localize("update_downloading", "Downloading update..."),
 		gaba.ProcessMessageOptions{ShowThemeBackground: true, ShowProgressBar: true, Progress: progress},
@@ -54,6 +55,7 @@ func (s *AdvancedSettingsScreen) switchToUpstream(input AdvancedSettingsInput, o
 			return nil, update.PerformUpdate(activeCFW, info.DownloadURL, info.AssetSize, info.AssetSHA256, progress)
 		},
 	)
+	release()
 	if err != nil {
 		gaba.GetLogger().Error("Failed to install upstream release", "error", err)
 		tellAdvanced(localizeWith("update_failed", "Update failed: {{.Error}}", map[string]any{"Error": err.Error()}))

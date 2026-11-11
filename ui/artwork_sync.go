@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"grout/cfw"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -231,6 +232,8 @@ func (s *ArtworkSyncScreen) downloadsFor(input ArtworkSyncInput, chosen []platfo
 }
 
 func (s *ArtworkSyncScreen) fetch(input ArtworkSyncInput, downloads []gaba.Download) {
+	defer cfw.KeepAwake()()
+
 	logger := gaba.GetLogger()
 
 	result, err := gaba.DownloadManager(downloads, map[string]string{

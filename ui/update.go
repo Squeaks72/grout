@@ -105,6 +105,8 @@ func (s *UpdateScreen) offer(info *update.Info) (bool, error) {
 }
 
 func (s *UpdateScreen) install(activeCFW cfw.CFW, info *update.Info) error {
+	defer cfw.KeepAwake()()
+
 	progress := &atomic.Float64{}
 
 	_, err := gaba.ProcessMessage(

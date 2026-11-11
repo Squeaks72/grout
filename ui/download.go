@@ -80,6 +80,9 @@ func (s *DownloadScreen) draw(input DownloadInput) (DownloadOutput, error) {
 			"fs_name", skip.Game.FsName, "reason", skip.Reason)
 	}
 
+	// A long download over slow Wi-Fi must not be cut off by the device sleeping.
+	defer cfw.KeepAwake()()
+
 	arrived, err := s.fetchRoms(plan, input)
 	if err != nil {
 		return output, err

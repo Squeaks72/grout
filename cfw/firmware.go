@@ -141,6 +141,10 @@ type Firmware struct {
 	// says how many files it moved. Only firmwares that resume games have one.
 	setAsideResumeState func(romPath string) (int, error)
 
+	// keepAwake, when set, stops the device sleeping until the function it
+	// returns is called.
+	keepAwake func() func()
+
 	// rescanLibrary, when set, asks a frontend that indexes its library to pick
 	// up games just downloaded. Leaf only lists what its last scan found.
 	rescanLibrary func() error
@@ -524,6 +528,7 @@ var firmwares = map[CFW]*Firmware{
 		setGameCore:          onion.SetGameCore,
 		installSyncMenuEntry: onion.InstallSyncSaveMenuEntry,
 		removeSyncMenuEntry:  onion.RemoveSyncSaveMenuEntry,
+		keepAwake:            onion.KeepAwake,
 		runtimeHook:          onion.SetRuntimeHook,
 		packaging:            Packaging{Asset: "Grout-Onion.zip", LaunchScript: "Grout/launch.sh", InstallDepth: 3},
 	},

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"grout/cfw"
 
 	gaba "github.com/BrandonKowalski/gabagool/v2/pkg/gabagool"
 	uatomic "go.uber.org/atomic"
@@ -43,6 +44,8 @@ func (s *RebuildCacheScreen) Draw(input RebuildCacheInput) (RebuildCacheOutput, 
 	if !chosen {
 		return output, nil
 	}
+
+	defer cfw.KeepAwake()()
 
 	// The background sync writes to the same tables, so it has to stand down
 	// for the duration and be told the cache is current afterwards.
